@@ -1,4 +1,5 @@
-{
+// Default baseline transcript embedded for standalone local preview
+window.DEFAULT_TRANSCRIPT = {
   "run_id": "baseline-bcfc6bb1",
   "timestamp": "2026-09-09T22:23:01.903436+00:00",
   "condition": {
@@ -1391,4 +1392,4 @@
       "reference_position": 3
     }
   ]
-}
+};
