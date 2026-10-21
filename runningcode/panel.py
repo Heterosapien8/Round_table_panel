@@ -9,8 +9,8 @@ import config as cfg
 import llm
 from aggregation import borda_aggregate, compare_to_reference, vote_diagnostics
 from candidate_profiles_upgraded import (CANDIDATES, CANDIDATE_LIST, REFERENCE_RANKING, REFERENCE_SCORES, CUTOFF_MARGIN)
-from conditions import (adversary_seat_for_condition, condition_label, exit_round_actual,
-                        last_round_present)
+from conditions import (adversary_seats_for_condition, condition_label_for_count,
+                        exit_round_actual, last_round_present)
 from defense import compute_vote_weights, run_auditor, visible_memory
 from fingerprint import config_fingerprint
 from parsing import parse_adversary_output, parse_panelist_output
@@ -22,9 +22,10 @@ from records import (append_summary_csv, checkpoint_path, load_checkpoint, save_
 from verification import verify_prose_scores
 
 
-def run_condition(condition, run_seed, replication, temperature, peer_check, defense_on, pacer):
+def run_condition(condition, run_seed, replication, temperature, peer_check, defense_on, pacer,
+                  adversary_count=1):
     target, suppress = candidate_profiles_upgraded.TARGET_CANDIDATE, candidate_profiles_upgraded.SUPPRESS_CANDIDATE
-    label = "baseline_no_adversary" if condition is None else condition_label(condition)
+    label = "baseline_no_adversary" if condition is None else condition_label_for_count(condition, adversary_count)
     ckpt_path = checkpoint_path(label, defense_on, replication)
     resume = load_checkpoint(ckpt_path, run_seed) if defense_on else None
     run_id = resume["run_id"] if resume else \
@@ -38,12 +39,12 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
     print()
 
     seats = [f"A{i + 1}" for i in range(cfg.PANEL_SIZE)]
-    adv_seat_idx = None
-    adversary_active = False
+    adv_seat_indices = []
+    adversary_active_seats = set()
     if condition is not None:
-        adv_seat_idx = adversary_seat_for_condition(condition)
+        adv_seat_indices = adversary_seats_for_condition(condition, adversary_count)
         if condition.entry_mode == "seeded":
-            adversary_active = True  # present from round 1 in the normal seat -- no entry event
+            adversary_active_seats = set(adv_seat_indices)  # present from round 1 -- no entry event
 
     exit_round = exit_round_actual(condition)
     summary_round = last_round_present(condition)
@@ -57,7 +58,12 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
     start_round = 1
     if resume:
         seats = resume["seats"]
-        adversary_active = resume["adversary_active"]
+        adv_seat_indices = resume.get("adversary_seats", adv_seat_indices)
+        if "adversary_active_seats" in resume:
+            adversary_active_seats = set(resume["adversary_active_seats"])
+        elif resume.get("adversary_active"):
+            # Checkpoints written before two-adversary support used one seat.
+            adversary_active_seats = set(adv_seat_indices)
         shared_memory = resume["shared_memory"]
         rotation_events = resume["rotation_events"]
         rounds_log = resume["rounds_log"]
@@ -75,7 +81,9 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         save_checkpoint(ckpt_path, {
             "run_id": run_id, "run_seed": run_seed, "config_fingerprint": config_fingerprint(),
             "auditor_model": cfg.AUDITOR_MODEL, "phase": phase, "round_number": round_number,
-            "seats": seats, "adversary_active": adversary_active, "shared_memory": shared_memory,
+            "seats": seats, "adversary_seats": adv_seat_indices,
+            "adversary_active_seats": sorted(adversary_active_seats),
+            "shared_memory": shared_memory,
             "rotation_events": rotation_events, "rounds_log": rounds_log,
             "next_agent_num": next_agent_num, "call_idx": call_idx,
             "models_reported": sorted(models_reported), "max_prompt_tokens": max_prompt_tokens,
@@ -87,17 +95,19 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
 
         # Injected entry fires before this round's turns.
         if (condition is not None and condition.entry_mode == "injected"
-                and round_number == condition.entry_round and not adversary_active):
-            old_agent = seats[adv_seat_idx]
-            new_agent = f"A{next_agent_num}"
-            next_agent_num += 1
-            seats[adv_seat_idx] = new_agent
-            adversary_active = True
-            rotation_events.append({
-                "round": round_number, "agent_removed": old_agent, "agent_added": new_agent,
-                "reason": "adversary_entry", "coincides_with_scheduled_rotation": False,
-            })
-            print(f"  [adversary entry] seat {adv_seat_idx}: {old_agent} -> {new_agent} ({condition.persona})")
+                and round_number == condition.entry_round and not adversary_active_seats):
+            for adv_seat_idx in adv_seat_indices:
+                old_agent = seats[adv_seat_idx]
+                new_agent = f"A{next_agent_num}"
+                next_agent_num += 1
+                seats[adv_seat_idx] = new_agent
+                adversary_active_seats.add(adv_seat_idx)
+                rotation_events.append({
+                    "round": round_number, "seat_idx": adv_seat_idx,
+                    "agent_removed": old_agent, "agent_added": new_agent,
+                    "reason": "adversary_entry", "coincides_with_scheduled_rotation": False,
+                })
+                print(f"  [adversary entry] seat {adv_seat_idx}: {old_agent} -> {new_agent} ({condition.persona})")
 
         # Memory the panelists will see this round. With defense ON, flagged content whose source
         # has left the panel is discounted here (spec 10.5).
@@ -116,7 +126,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
                             and round_number == resume["round_number"])
         current_round_turns = resume["current_round_turns"] if resume_pre_audit else []
         for seat_idx, agent_id in ([] if resume_pre_audit else enumerate(seats)):
-            is_adv_turn = condition is not None and adversary_active and seat_idx == adv_seat_idx
+            is_adv_turn = condition is not None and seat_idx in adversary_active_seats
             persona = condition.persona if is_adv_turn else None
 
             if is_adv_turn:
@@ -222,26 +232,28 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         })
 
         # Adversary exit -- may coincide with the regular schedule's slot for this round (spec 4.3).
-        adversary_exited_this_round = False
-        if condition is not None and adversary_active and exit_round == round_number:
-            coincident = (round_number in cfg.ROTATION_SCHEDULE
-                          and cfg.ROTATION_SCHEDULE[round_number] == adv_seat_idx)
-            old_agent = seats[adv_seat_idx]
-            new_agent = f"A{next_agent_num}"
-            next_agent_num += 1
-            seats[adv_seat_idx] = new_agent
-            adversary_active = False
-            adversary_exited_this_round = True
-            rotation_events.append({
-                "round": round_number, "agent_removed": old_agent, "agent_added": new_agent,
-                "reason": "adversary_exit", "coincides_with_scheduled_rotation": coincident,
-            })
-            print(f"  [adversary exit] seat {adv_seat_idx}: {old_agent} -> {new_agent}"
-                  f"{' (coincides with scheduled rotation)' if coincident else ''}")
+        adversary_exited_this_round = set()
+        if condition is not None and adversary_active_seats and exit_round == round_number:
+            for adv_seat_idx in sorted(adversary_active_seats):
+                coincident = (round_number in cfg.ROTATION_SCHEDULE
+                              and cfg.ROTATION_SCHEDULE[round_number] == adv_seat_idx)
+                old_agent = seats[adv_seat_idx]
+                new_agent = f"A{next_agent_num}"
+                next_agent_num += 1
+                seats[adv_seat_idx] = new_agent
+                adversary_exited_this_round.add(adv_seat_idx)
+                rotation_events.append({
+                    "round": round_number, "seat_idx": adv_seat_idx,
+                    "agent_removed": old_agent, "agent_added": new_agent,
+                    "reason": "adversary_exit", "coincides_with_scheduled_rotation": coincident,
+                })
+                print(f"  [adversary exit] seat {adv_seat_idx}: {old_agent} -> {new_agent}"
+                      f"{' (coincides with scheduled rotation)' if coincident else ''}")
+            adversary_active_seats.clear()
 
         if round_number in cfg.ROTATION_SCHEDULE:
             seat_idx = cfg.ROTATION_SCHEDULE[round_number]
-            if adversary_exited_this_round and seat_idx == adv_seat_idx:
+            if seat_idx in adversary_exited_this_round:
                 pass  # already logged as the single combined event above -- don't double it
             else:
                 old_agent = seats[seat_idx]
@@ -283,7 +295,9 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             "replication": replication,
             "target_candidate": None if condition is None else target,
             "suppress_candidate": None if condition is None else suppress,
-            "adversary_seat": adv_seat_idx,
+            "adversary_count": 0 if condition is None else adversary_count,
+            "adversary_seat": adv_seat_indices[0] if adv_seat_indices else None,
+            "adversary_seats": adv_seat_indices,
         },
         "config": {
             "prompt_version": cfg.PROMPT_VERSION,
@@ -296,6 +310,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             "temperature": temperature,
             "base_seed": run_seed,
             "peer_check": peer_check,
+            "adversary_count": 0 if condition is None else adversary_count,
             "show_peer_rankings": cfg.SHOW_PEER_RANKINGS,
             "score_tol": cfg.SCORE_TOL,
             "config_fingerprint": config_fingerprint(),
@@ -326,7 +341,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         os.remove(ckpt_path)
 
     row = summarize_run(run_id, run_seed, replication, temperature, peer_check, defense_on,
-                        condition, rounds_log, final_ranking, max_prompt_tokens)
+                        condition, rounds_log, final_ranking, max_prompt_tokens, adversary_count)
     append_summary_csv(row)
 
     def pct(x):

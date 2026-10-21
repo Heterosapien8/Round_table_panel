@@ -11,7 +11,7 @@ from fingerprint import config_fingerprint
 
 
 def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on, condition,
-                  rounds_log, final_ranking, max_prompt_tokens):
+                  rounds_log, final_ranking, max_prompt_tokens, adversary_count=1):
     target = candidate_profiles_upgraded.TARGET_CANDIDATE
     turns = [t for r in rounds_log for t in r["turns"]]
     ok = [t for t in turns if t["parse_ok"]]
@@ -48,6 +48,7 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
         "temperature": temperature, "peer_check": peer_check,
         "defense_state": "on" if defense_on else "off",
         "persona": None if condition is None else condition.persona,
+        "adversary_count": 0 if condition is None else adversary_count,
         "entry_mode": None if condition is None else condition.entry_mode,
         "entry_round": None if condition is None else condition.entry_round,
         "exit_round": None if condition is None else condition.exit_round,
@@ -91,11 +92,27 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
 def append_summary_csv(row):
     path = os.path.join(cfg.OUTPUT_DIR, "runs_summary.csv")
     new = not os.path.exists(path)
-    with open(path, "a", newline="") as f:
-        w = csv.DictWriter(f, fieldnames=list(row.keys()))
-        if new:
+    if new:
+        with open(path, "a", newline="") as f:
+            w = csv.DictWriter(f, fieldnames=list(row.keys()))
             w.writeheader()
-        w.writerow(row)
+            w.writerow(row)
+        return
+
+    # Expand older summary files when a new metric is introduced. This keeps
+    # existing rows usable while allowing matrix-specific fields to be stored.
+    with open(path, newline="") as f:
+        reader = csv.DictReader(f)
+        old_fieldnames = reader.fieldnames or []
+        old_rows = list(reader)
+    fieldnames = old_fieldnames + [key for key in row if key not in old_fieldnames]
+    old_rows.append(row)
+    tmp = path + ".tmp"
+    with open(tmp, "w", newline="") as f:
+        w = csv.DictWriter(f, fieldnames=fieldnames)
+        w.writeheader()
+        w.writerows(old_rows)
+    os.replace(tmp, path)
 
 
 def existing_transcripts(label, defense_on, replication):

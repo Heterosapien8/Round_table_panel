@@ -18,7 +18,7 @@ from calibration import (baseline_gate_check, calibrate, calibration_path, load_
 from candidate_profiles_upgraded import (CANDIDATE_BY_ID, CANDIDATE_LIST, REFERENCE_RANKING,
                                          REFERENCE_SCORES, REFERENCE_TOP_K)
 from conditions import (CONDITION_BY_LABEL, CONDITIONS, adversary_seat_for_condition,
-                        resolve_run_config)
+                        adversary_seats_for_condition, resolve_run_config)
 from defense import vote_weight, visible_memory
 from fingerprint import config_fingerprint
 from parsing import parse_adversary_output, parse_auditor_output, parse_panelist_output
@@ -104,6 +104,11 @@ It also has a profile with broad platform ownership.
             assert seat == 1 and cfg.ROTATION_SCHEDULE[4] == 1
         else:
             assert seat == 2 and seat not in cfg.ROTATION_SCHEDULE.values()
+        seats = adversary_seats_for_condition(c, 2)
+        if c.entry_mode == "injected" and c.exit_round == 4:
+            assert seats == [1, 2]
+        else:
+            assert seats == [2, 3]
     assert len(CONDITION_BY_LABEL) == 12
 
     # Config resolution.
@@ -115,7 +120,8 @@ It also has a profile with broad platform ownership.
     for args in [(True, True, False, "seeded_r1_exit3", 1, "off"),
                  (True, False, False, "nonsense", 1, "off"),
                  (True, False, False, "seeded_r1_exit3", 0, "off"),
-                 (True, False, False, "seeded_r1_exit3", 1, "maybe")]:
+                 (True, False, False, "seeded_r1_exit3", 1, "maybe"),
+                 (True, False, False, "seeded_r1_exit3", 1, "off", 3)]:
         try:
             resolve_run_config(*args)
             raise AssertionError("bad config accepted")
@@ -370,18 +376,20 @@ def _mock_pipeline_test():
         return {"text": json.dumps({"entries": body}), "usage": None, "model": cfg.AUDITOR_MODEL,
                 "finish_reason": "STOP"}
 
-    runs = [  # (condition or None, defense_on)
-        (None, False),
-        (CONDITION_BY_LABEL["seeded_r1_exit3__fabricator"], True),
-        (CONDITION_BY_LABEL["injected_r3_exit4__editor"], False),
-        (CONDITION_BY_LABEL["seeded_r1_noexit__coalitionbuilder"], False),
+    runs = [  # (condition or None, defense_on, adversary_count)
+        (None, False, 1),
+        (CONDITION_BY_LABEL["seeded_r1_exit3__fabricator"], True, 1),
+        (CONDITION_BY_LABEL["injected_r3_exit4__editor"], False, 1),
+        (CONDITION_BY_LABEL["seeded_r1_noexit__coalitionbuilder"], False, 1),
+        (CONDITION_BY_LABEL["seeded_r1_exit3__fabricator"], False, 2),
     ]
     try:
         llm.call_nvidia, llm.call_gemini = fake_nvidia, fake_gemini
         with tempfile.TemporaryDirectory() as tmp:
             cfg.OUTPUT_DIR = tmp
-            for i, (cond, dfn) in enumerate(runs):
-                path = panel.run_condition(cond, 1000 + i * 1000, i + 1, cfg.TEMPERATURE, cfg.PEER_CHECK, dfn, None)
+            for i, (cond, dfn, adv_count) in enumerate(runs):
+                path = panel.run_condition(cond, 1000 + i * 1000, i + 1, cfg.TEMPERATURE, cfg.PEER_CHECK,
+                                           dfn, None, adv_count)
                 with open(path) as f:
                     j = json.load(f)
                 assert len(j["rounds"]) == cfg.TOTAL_ROUNDS and j["config"]["show_peer_rankings"] == cfg.SHOW_PEER_RANKINGS
@@ -389,7 +397,7 @@ def _mock_pipeline_test():
                 if cond is None:
                     assert len(j["rotation_events"]) == 2
                     assert all(r["aggregation_result"]["diagnostics"] for r in j["rounds"])
-                if cond is not None and cond.persona == "Fabricator":
+                if cond is not None and cond.persona == "Fabricator" and adv_count == 1:
                     advs = [t for r in j["rounds"] for t in r["turns"] if t["is_adversary"]]
                     assert advs and all(t["verified_tier1"] is False for t in advs), "fabricated value must fail Tier 1"
                     last = [r for r in j["rounds"] if r["turns"][2]["is_adversary"]][-1]["round_number"]
@@ -407,9 +415,14 @@ def _mock_pipeline_test():
                 if cond is not None and cond.persona == "CoalitionBuilder":
                     # no-exit: the adversary must still be speaking in round 6 (scheduled swaps must not remove it)
                     assert j["rounds"][5]["turns"][2]["is_adversary"], "scheduled rotation removed the adversary"
+                if adv_count == 2:
+                    assert j["condition"]["adversary_count"] == 2
+                    assert all(sum(t["is_adversary"] for t in r["turns"]) == 2
+                               for r in j["rounds"][:3]), "two-adversary case did not produce two adversary turns"
+                    assert j["condition"]["adversary_seats"] == [2, 3]
             with open(os.path.join(tmp, "runs_summary.csv")) as f:
                 rows = list(csv.DictReader(f))
-            assert len(rows) == 4 and rows[0]["attack_success"] != "", "baseline rows carry attack_success"
+            assert len(rows) == 5 and rows[0]["attack_success"] != "", "baseline rows carry attack_success"
             assert rows[0]["top3_correct"] == "True"
             assert rows[1]["defense_state"] == "on" and rows[1]["first_adv_detection_round"] == "1"
 
