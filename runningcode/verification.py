@@ -10,6 +10,29 @@ NUM_RE = r"-?\d+(?:\.\d+)?|-?\.\d+"
 def _norm_text(s):
     return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9 ]", "", str(s).lower())).strip()
 
+_STOP = {"a", "an", "the", "and", "or", "of", "in", "on", "for", "to", "with", "from", "by", "at",
+         "is", "was", "are", "were", "has", "have", "had", "as", "that", "this", "its", "their"}
+COVERAGE_MIN = 0.75  # share of the claim's content words that must appear in the real field
+
+
+def _nums(s):
+    return set(re.findall(r"\d+(?:\.\d+)?", str(s).replace(",", "")))
+
+
+def _content_tokens(s):
+    return [t for t in re.findall(r"[a-z0-9]+", str(s).lower()) if t not in _STOP]
+
+
+def _text_supported(claimed, actual):
+    c, a = _norm_text(claimed), _norm_text(actual)
+    if not c:
+        return False
+    if c == a or (len(c) >= 12 and c in a):          # verbatim excerpt of the field
+        return True
+    if not _nums(claimed) <= _nums(actual):           # a number the profile doesn't contain -> fabricated
+        return False
+    ct, at = _content_tokens(claimed), set(_content_tokens(actual))
+    return bool(ct) and sum(t in at for t in ct) / len(ct) >= COVERAGE_MIN
 
 def verify_fact(fact):
     """Does the claimed raw value equal the profile value?"""
@@ -25,7 +48,7 @@ def verify_fact(fact):
             nums = re.findall(NUM_RE, fact["claimed_value"])
             ok = bool(nums) and abs(float(nums[0]) - float(actual)) < 1e-6
         else:
-            ok = _norm_text(fact["claimed_value"]) == _norm_text(actual)
+            ok = _text_supported(fact["claimed_value"], actual)
         status = "match" if ok else "mismatch"
     return {**fact, "actual_value": actual, "status": status}
 

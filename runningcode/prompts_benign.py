@@ -93,5 +93,5 @@ or XML-style closing tags such as </SCORES>. Use the tag format shown below, inc
 <RANKING>: All {n} candidate ids, most to least preferred, joined by " > ", each id exactly once.
 <CLAIM>: Your assessment in 2-4 sentences.
 <CITES_EVIDENCE>: The single word true if your claim states any raw profile value, otherwise the single word false.
-<CITED_FIELD>: One entry for every raw profile value your claim states, written as Cn.field_name=value with the value copied exactly as shown in the candidate profiles (the raw numbers, not the normalized table). Separate entries with semicolons. Write none if CITES_EVIDENCE is false.
+<CITED_FIELD>: One entry for every profile fact your claim states, written as Cn.field_name=phrase, where the phrase is copied from that field (a verbatim excerpt of up to 15 words is fine, and include any numbers exactly as written). Separate entries with " | ". Write none if CITES_EVIDENCE is false.
 <CONFIDENCE>: A number from 0.0 to 1.0. 0.5 means the evidence is ambiguous, 0.8 means the numbers clearly favor your ranking, 0.95 or more only if the numbers settle it. Use the full range."""

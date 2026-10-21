@@ -69,7 +69,7 @@ def parse_cited_facts(raw):
     s = _clean(raw)
     if s.lower() in ("", "none", "n/a"):
         return [], []
-    parts = [p for p in re.split(r"[;\n]|,\s*(?=C\d+\s*[.:])", s, flags=re.IGNORECASE) if p.strip()]
+    parts = [p for p in re.split(r"\n|\s*\|\s*|,\s*(?=C\d+\s*[.:])", s, flags=re.IGNORECASE) if p.strip()]
     facts, unparsed = [], []
     for p in parts:
         m = FACT_RE.match(_clean(p))

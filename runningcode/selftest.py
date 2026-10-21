@@ -50,7 +50,7 @@ def _selftest_body():
 It also has a profile with broad platform ownership.
 <RANKING>: {" > ".join(REFERENCE_RANKING)}
 <CITES_EVIDENCE>: true
-<CITED_FIELD>: C5.headline={CANDIDATE_BY_ID["C5"]["structured_evidence"]["headline"]}; C1.headline=incorrect; C5.interview_notes={CANDIDATE_BY_ID["C5"]["structured_evidence"]["interview_notes"]}
+<CITED_FIELD>: C5.headline={CANDIDATE_BY_ID["C5"]["structured_evidence"]["headline"]} | C1.headline=incorrect | C5.interview_notes={CANDIDATE_BY_ID["C5"]["structured_evidence"]["interview_notes"]}
 <CONFIDENCE>: 0.8"""
     true_scores = "; ".join(f"{c}={REFERENCE_SCORES[c]:.3f}" for c in CANDIDATE_LIST)
     good += "\n<SCORES>: " + true_scores
