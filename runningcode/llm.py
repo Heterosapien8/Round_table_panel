@@ -1,5 +1,5 @@
-"""llm.py -- Groq (panelists) and Gemini (auditor) API calls, TPM pacing, retries.
-Other modules call these as llm.call_groq / llm.call_gemini so tests can replace them."""
+"""llm.py -- NVIDIA NIM (panelists) and Gemini (auditor) API calls, TPM pacing, retries.
+Other modules call these as llm.call_nvidia / llm.call_gemini so tests can replace them."""
 import random
 import re
 import time
@@ -18,63 +18,69 @@ class AuditorUnavailableError(RuntimeError):
     """Gemini stayed unavailable for the whole retry budget. Progress is checkpointed; rerun to resume."""
 
 
-class TPMPacer:
-    """Sliding 60s window over actual token usage (Groq TPM counts prompt + completion)."""
+class NIMRatePacer:
+    """Sliding 60s window for NVIDIA hosted API requests per minute."""
 
-    def __init__(self, limit, safety=0.85):
-        self.budget = limit * safety
-        self.window = deque()  # (timestamp, tokens)
+    def __init__(self, requests_per_minute, safety=1.0):
+        self.budget = requests_per_minute * safety
+        self.window = deque()  # request timestamps
 
     def _prune(self, now):
         while self.window and now - self.window[0][0] >= 60:
             self.window.popleft()
 
-    def wait(self, est_tokens):
+    def wait(self, _est_tokens=None):
         while True:
             now = time.time()
             self._prune(now)
-            used = sum(t for _, t in self.window)
-            if not self.window or used + est_tokens <= self.budget:
+            used = len(self.window)
+            if used < self.budget:
                 return
             sleep_for = 60 - (now - self.window[0][0]) + 0.5
-            print(f"  [pacing: ~{used} tokens in last 60s, waiting {sleep_for:.0f}s]")
+            print(f"  [pacing: {used:.0f} requests in last 60s, waiting {sleep_for:.0f}s]")
             time.sleep(max(sleep_for, 0.5))
 
-    def record(self, tokens):
-        self.window.append((time.time(), tokens))
+    def record(self, _tokens=None):
+        self.window.append((time.time(), 1))
 
 
-def call_groq(system_prompt, user_prompt, pacer, seed, temperature,
-              max_tokens=cfg.MAX_TOKENS_PER_TURN, retries=6):
-    if not cfg.GROQ_API_KEY:
-        raise RuntimeError("GROQ_API_KEY environment variable is not set.")
+def call_nvidia(system_prompt, user_prompt, pacer, seed, temperature,
+                max_tokens=cfg.MAX_TOKENS_PER_TURN, retries=6):
+    if not cfg.NVIDIA_API_KEY:
+        raise RuntimeError("NVIDIA_API_KEY environment variable is not set.")
 
-    headers = {"Authorization": f"Bearer {cfg.GROQ_API_KEY}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {cfg.NVIDIA_API_KEY}", "Content-Type": "application/json"}
     payload = {
-        "model": cfg.GROQ_MODEL,
+        "model": cfg.NVIDIA_MODEL,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
         ],
         "max_tokens": max_tokens,
         "temperature": temperature,
+        "top_p": 0.95,
         "seed": seed,  # best-effort determinism; logged either way
+        # The panel requires compact tagged output. Thinking tokens share the
+        # max_tokens budget and can otherwise leave no room for the answer.
+        "chat_template_kwargs": {"enable_thinking": False},
     }
     est_tokens = int((len(system_prompt) + len(user_prompt)) / 3.5) + 250
 
     for attempt in range(retries):
         pacer.wait(est_tokens)
         try:
-            resp = requests.post(cfg.GROQ_URL, headers=headers, json=payload, timeout=60)
-            if resp.status_code == 429:
+            resp = requests.post(cfg.NVIDIA_URL, headers=headers, json=payload, timeout=60)
+            # Count every outbound attempt, including retries, against the RPM window.
+            pacer.record()
+            if resp.status_code in (429, 500, 502, 503, 504):
                 err_msg = ""
                 try:
                     err_msg = resp.json().get("error", {}).get("message", "")
                 except Exception:
-                    pass
-                if re.search(r"per day|\bTPD\b|\bRPD\b", err_msg, re.IGNORECASE):
+                    err_msg = resp.text[:300]
+                if resp.status_code == 429 and re.search(r"per day|\bTPD\b|\bRPD\b", err_msg, re.IGNORECASE):
                     raise DailyLimitError(
-                        "Groq DAILY limit reached -- stop for today and rerun this run later. "
+                        "NVIDIA DAILY limit reached -- stop for today and rerun this run later. "
                         f"Provider message: {err_msg}"
                     )
                 wait = None
@@ -89,16 +95,21 @@ def call_groq(system_prompt, user_prompt, pacer, seed, temperature,
                     if match:
                         wait = float(match.group(1)) + 1.0
                 if wait is None:
-                    wait = 8 * (attempt + 1)
-                print(f"  [rate limited (429), backing off {wait:.1f}s (attempt {attempt + 1}/{retries})]")
+                    wait = 8 * (attempt + 1) if resp.status_code == 429 else min(30, 2 ** attempt)
+                print(f"  [NVIDIA HTTP {resp.status_code}, backing off {wait:.1f}s "
+                      f"(attempt {attempt + 1}/{retries})]")
                 time.sleep(wait)
                 continue
+            if resp.status_code == 402:
+                raise DailyLimitError(
+                    "NVIDIA API credits/limits exhausted. Check the NVIDIA API Catalog account limits. "
+                    f"Provider message: {resp.text[:300]}"
+                )
             if resp.status_code != 200:
-                print(f"  [Groq API Error {resp.status_code}]: {resp.text}")
+                print(f"  [NVIDIA API Error {resp.status_code}]: {resp.text}")
                 resp.raise_for_status()
             data = resp.json()
             usage = data.get("usage") or {}
-            pacer.record(usage.get("total_tokens", est_tokens))
             return {
                 "text": data["choices"][0]["message"].get("content") or "",
                 "usage": usage,
@@ -109,10 +120,10 @@ def call_groq(system_prompt, user_prompt, pacer, seed, temperature,
             raise
         except requests.exceptions.RequestException as e:
             if attempt == retries - 1:
-                raise RuntimeError(f"Groq API call failed: {e}")
+                raise RuntimeError(f"NVIDIA API call failed: {e}")
             time.sleep(3)
 
-    raise RuntimeError("Groq API call failed after retries.")
+    raise RuntimeError("NVIDIA API call failed after retries.")
 
 
 def call_gemini(system_prompt, user_prompt):

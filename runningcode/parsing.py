@@ -3,7 +3,7 @@ No silent defaults: anything missing/malformed -> None + parse_errors."""
 import json
 import re
 
-from candidates import CANDIDATE_LIST
+from candidate_profiles_upgraded import CANDIDATE_LIST
 from prompts_adversary import PERSONA_MECHANISMS
 from verification import (NUM_RE, verify_fact, verify_prose_scores, verify_scores)
 
@@ -20,8 +20,11 @@ def strip_reasoning(text):
 
 
 def extract_tag(text, tag):
-    """Capture everything after <TAG>: up to the next known tag (or end), so multi-line claims survive."""
-    m = re.search(rf"<{tag}>\s*:?\s*(.*?)(?=<(?:{_TAG_ALT})>|\Z)", text, re.DOTALL | re.IGNORECASE)
+    """Capture colon-style or XML-style tags, preserving multi-line values."""
+    m = re.search(
+        rf"<{tag}>\s*:?\s*(.*?)(?=</{tag}>|<(?:{_TAG_ALT})>|\Z)",
+        text, re.DOTALL | re.IGNORECASE,
+    )
     return m.group(1).strip() if m else None
 
 
@@ -60,7 +63,7 @@ def parse_ranking(v):
 
 
 def parse_cited_facts(raw):
-    """'C5.technical_assessment_score=91; C1.years_experience=6' -> (facts, unparsed_entries)"""
+    """'C5.headline=...; C1.projects=...' -> (facts, unparsed_entries)"""
     if raw is None:
         return [], []
     s = _clean(raw)

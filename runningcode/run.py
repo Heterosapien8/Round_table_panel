@@ -2,24 +2,24 @@
 run.py -- the ONLY file you run.  One execution = one run, condition set in config.py.
 
 Setup (PowerShell):
-    $env:GROQ_API_KEY="your-groq-key"
+    $env:NVIDIA_API_KEY="your-nvidia-key"
     $env:GEMINI_API_KEY="your-gemini-key"     # only needed when DEFENSE_ON = True
 
     python run.py --selftest      # offline checks, no API calls
     python run.py --calibrate     # ~5 cheap blind calls: is there headroom? (re-runs reuse saved ballots; --fresh re-samples)
     python run.py                 # exactly one run, then exits
 
-Edit settings in config.py, prompts in prompts_*.py, candidates in candidates.py.
+Edit settings in config.py, prompts in prompts_*.py, and candidate profiles in candidate_profiles_upgraded.py.
 Baseline gate: adversary runs are refused until --calibrate has passed for the current
 prompts/candidates/target and no baseline run of the same config already puts the target in the top-k.
 """
 import sys
 
-import candidates
+import candidate_profiles_upgraded
 import config as cfg
 from calibration import baseline_gate_check, calibrate, print_dataset_sanity
 from conditions import condition_label, resolve_run_config
-from llm import AuditorUnavailableError, DailyLimitError, TPMPacer
+from llm import AuditorUnavailableError, DailyLimitError, NIMRatePacer
 from panel import run_condition
 from records import existing_transcripts
 
@@ -40,14 +40,14 @@ def main():
         print(f"Config error: {e}", file=sys.stderr)
         sys.exit(1)
 
-    if not cfg.GROQ_API_KEY:
-        print("Error: GROQ_API_KEY environment variable is not set.", file=sys.stderr)
+    if not cfg.NVIDIA_API_KEY:
+        print("Error: NVIDIA_API_KEY environment variable is not set.", file=sys.stderr)
         sys.exit(1)
     if cfg.DEFENSE_ON and not cfg.GEMINI_API_KEY:
         print("Error: DEFENSE_ON = True needs the GEMINI_API_KEY environment variable.", file=sys.stderr)
         sys.exit(1)
-    if cfg.GROQ_MODEL != cfg.SPEC_MODEL:
-        print(f"WARNING: GROQ_MODEL={cfg.GROQ_MODEL} differs from spec model {cfg.SPEC_MODEL}")
+    if cfg.NVIDIA_MODEL != cfg.SPEC_MODEL:
+        print(f"WARNING: NVIDIA_MODEL={cfg.NVIDIA_MODEL} differs from spec model {cfg.SPEC_MODEL}")
 
     label = "baseline_no_adversary" if condition is None else condition_label(condition)
     prior = existing_transcripts(label, cfg.DEFENSE_ON, cfg.REPLICATION)
@@ -70,7 +70,7 @@ def main():
     print()
     print(f"Configured run: {label} | defense {'ON' if cfg.DEFENSE_ON else 'off'} | "
           f"replication {cfg.REPLICATION} | seed {run_seed}\n")
-    pacer = TPMPacer(cfg.TPM_LIMIT)
+    pacer = NIMRatePacer(cfg.NVIDIA_RPM_LIMIT)
     try:
         run_condition(condition, run_seed, cfg.REPLICATION, cfg.TEMPERATURE, cfg.PEER_CHECK, cfg.DEFENSE_ON, pacer)
     except DailyLimitError as e:

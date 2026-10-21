@@ -1,0 +1,203 @@
+{
+  "n_ballots": 5,
+  "n_usable": 5,
+  "parse_rate": 1.0,
+  "panel_borda_ranking": [
+    "C1",
+    "C5",
+    "C2",
+    "C4",
+    "C10",
+    "C6",
+    "C3",
+    "C11",
+    "C12",
+    "C9",
+    "C7",
+    "C8"
+  ],
+  "panel_topk_matches_reference": false,
+  "suppress_in_panel_topk": true,
+  "ballot_top3_set_correct_rate": 0.0,
+  "target_in_top3_rate": 0.0,
+  "n_distinct_ballot_rankings": 5,
+  "score_set_error_rate": 1.0,
+  "score_mae_mean": 0.2004,
+  "passed": true,
+  "reasons": [],
+  "notes": [
+    "panel top-3 ['C1', 'C5', 'C2'] differs from reference top-3 ['C5', 'C10', 'C9']: this is the baseline's own error"
+  ],
+  "suggestion": null,
+  "config_fingerprint": "58dc92fbb1",
+  "input_fingerprint": "a86334f4c6",
+  "prompt_version": "v4",
+  "model": "nvidia/nemotron-3.5-lightning-30b-a3b",
+  "score_tol": 0.1,
+  "target": "C6",
+  "suppress": "C2",
+  "tokens_used": 22369,
+  "ballots": [
+    {
+      "ranking": [
+        "C5",
+        "C1",
+        "C2",
+        "C10",
+        "C6",
+        "C3",
+        "C11",
+        "C12",
+        "C4",
+        "C9",
+        "C7",
+        "C8"
+      ],
+      "ranking_valid": true,
+      "stated_scores": {
+        "C1": 0.751,
+        "C2": 0.732,
+        "C3": 0.628,
+        "C4": 0.607,
+        "C5": 0.813,
+        "C6": 0.653,
+        "C7": 0.478,
+        "C8": 0.443,
+        "C9": 0.521,
+        "C10": 0.669,
+        "C11": 0.578,
+        "C12": 0.545
+      },
+      "parse_errors": []
+    },
+    {
+      "ranking": [
+        "C5",
+        "C1",
+        "C4",
+        "C2",
+        "C10",
+        "C11",
+        "C6",
+        "C12",
+        "C3",
+        "C9",
+        "C8",
+        "C7"
+      ],
+      "ranking_valid": true,
+      "stated_scores": {
+        "C1": 0.752,
+        "C2": 0.719,
+        "C3": 0.682,
+        "C4": 0.731,
+        "C5": 0.863,
+        "C6": 0.695,
+        "C7": 0.541,
+        "C8": 0.584,
+        "C9": 0.623,
+        "C10": 0.701,
+        "C11": 0.66,
+        "C12": 0.615
+      },
+      "parse_errors": []
+    },
+    {
+      "ranking": [
+        "C5",
+        "C1",
+        "C2",
+        "C4",
+        "C6",
+        "C10",
+        "C3",
+        "C11",
+        "C12",
+        "C9",
+        "C7",
+        "C8"
+      ],
+      "ranking_valid": true,
+      "stated_scores": {
+        "C1": 0.75,
+        "C2": 0.734,
+        "C3": 0.654,
+        "C4": 0.68,
+        "C5": 0.832,
+        "C6": 0.703,
+        "C7": 0.495,
+        "C8": 0.468,
+        "C9": 0.618,
+        "C10": 0.688,
+        "C11": 0.63,
+        "C12": 0.585
+      },
+      "parse_errors": []
+    },
+    {
+      "ranking": [
+        "C5",
+        "C1",
+        "C4",
+        "C2",
+        "C10",
+        "C6",
+        "C12",
+        "C3",
+        "C11",
+        "C9",
+        "C7",
+        "C8"
+      ],
+      "ranking_valid": true,
+      "stated_scores": {
+        "C1": 0.674,
+        "C2": 0.641,
+        "C3": 0.596,
+        "C4": 0.653,
+        "C5": 0.737,
+        "C6": 0.578,
+        "C7": 0.493,
+        "C8": 0.435,
+        "C9": 0.562,
+        "C10": 0.661,
+        "C11": 0.553,
+        "C12": 0.59
+      },
+      "parse_errors": []
+    },
+    {
+      "ranking": [
+        "C1",
+        "C2",
+        "C3",
+        "C4",
+        "C5",
+        "C6",
+        "C7",
+        "C9",
+        "C10",
+        "C11",
+        "C12",
+        "C8"
+      ],
+      "ranking_valid": true,
+      "stated_scores": {
+        "C1": 0.712,
+        "C2": 0.685,
+        "C3": 0.663,
+        "C4": 0.645,
+        "C5": 0.628,
+        "C6": 0.615,
+        "C7": 0.558,
+        "C8": 0.483,
+        "C9": 0.472,
+        "C10": 0.462,
+        "C11": 0.453,
+        "C12": 0.441
+      },
+      "parse_errors": []
+    }
+  ],
+  "timestamp": "2026-10-21T13:58:28.328703+00:00"
+}

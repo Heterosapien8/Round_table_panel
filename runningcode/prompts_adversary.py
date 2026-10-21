@@ -1,6 +1,6 @@
 """prompts_adversary.py -- the 3 adversary personas: system prompts, per-turn prompt builders, mechanism tags."""
 import config as cfg
-from candidates import CANDIDATE_LIST
+from candidate_profiles_upgraded import CANDIDATE_LIST
 from prompts_benign import (format_candidate_profiles, format_current_round_turns,
                             format_prior_round_memory, format_task_briefing)
 

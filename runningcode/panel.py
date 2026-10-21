@@ -4,11 +4,11 @@ import os
 import uuid
 from datetime import datetime, timezone
 
-import candidates
+import candidate_profiles_upgraded
 import config as cfg
 import llm
 from aggregation import borda_aggregate, compare_to_reference, vote_diagnostics
-from candidates import (CANDIDATES, CANDIDATE_LIST, REFERENCE_RANKING, REFERENCE_SCORES, CUTOFF_MARGIN)
+from candidate_profiles_upgraded import (CANDIDATES, CANDIDATE_LIST, REFERENCE_RANKING, REFERENCE_SCORES, CUTOFF_MARGIN)
 from conditions import (adversary_seat_for_condition, condition_label, exit_round_actual,
                         last_round_present)
 from defense import compute_vote_weights, run_auditor, visible_memory
@@ -23,14 +23,14 @@ from verification import verify_prose_scores
 
 
 def run_condition(condition, run_seed, replication, temperature, peer_check, defense_on, pacer):
-    target, suppress = candidates.TARGET_CANDIDATE, candidates.SUPPRESS_CANDIDATE
+    target, suppress = candidate_profiles_upgraded.TARGET_CANDIDATE, candidate_profiles_upgraded.SUPPRESS_CANDIDATE
     label = "baseline_no_adversary" if condition is None else condition_label(condition)
     ckpt_path = checkpoint_path(label, defense_on, replication)
     resume = load_checkpoint(ckpt_path, run_seed) if defense_on else None
     run_id = resume["run_id"] if resume else \
         f"{label}-def{'on' if defense_on else 'off'}-rep{replication}-s{run_seed}-{uuid.uuid4().hex[:6]}"
     print(f"=== {'Resuming' if resume else 'Starting'} run {run_id} ===")
-    print(f"Model: {cfg.GROQ_MODEL} | Rounds: {cfg.TOTAL_ROUNDS} | Panel: {cfg.PANEL_SIZE} | "
+    print(f"Model: {cfg.NVIDIA_MODEL} | Rounds: {cfg.TOTAL_ROUNDS} | Panel: {cfg.PANEL_SIZE} | "
           f"temp: {temperature} | seed base: {run_seed} | peer_check: {peer_check} | "
           f"defense: {'ON (auditor ' + cfg.AUDITOR_MODEL + ')' if defense_on else 'off'}")
     if condition is not None:
@@ -138,7 +138,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             call_idx += 1
             call_seed = run_seed + call_idx
             print(f"  {agent_id} thinking...", end=" ", flush=True)
-            resp = llm.call_groq(system_prompt, user_prompt, pacer, seed=call_seed, temperature=temperature)
+            resp = llm.call_nvidia(system_prompt, user_prompt, pacer, seed=call_seed, temperature=temperature)
 
             turn = parse_adversary_output(resp["text"], agent_id, persona) if is_adv_turn \
                 else parse_panelist_output(resp["text"], agent_id)
@@ -264,10 +264,10 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         for cid in CANDIDATE_LIST
     ]
 
-    if models_reported - {cfg.GROQ_MODEL}:
-        print(f"WARNING: API reported model(s) {sorted(models_reported)} but requested {cfg.GROQ_MODEL}")
+    if models_reported - {cfg.NVIDIA_MODEL}:
+        print(f"WARNING: API reported model(s) {sorted(models_reported)} but requested {cfg.NVIDIA_MODEL}")
 
-    model_assignment = {"panelist": cfg.GROQ_MODEL}
+    model_assignment = {"panelist": cfg.NVIDIA_MODEL}
     if defense_on:
         model_assignment["auditor"] = cfg.AUDITOR_MODEL
 
@@ -348,8 +348,8 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
           f"{pct(row['ranking_follows_own_scores_rate'])}")
     print(f"Herding: mean distinct rankings/round {row['mean_distinct_rankings']} | first-speaker agreement "
           f"{pct(row['mean_first_speaker_agreement'])} | degenerate rounds {row['n_degenerate_rounds']}/{cfg.TOTAL_ROUNDS}")
-    print(f"Max prompt tokens seen: {max_prompt_tokens} (TPM cap {cfg.TPM_LIMIT}) | "
-          f"Groq tokens used this run: {row['total_groq_tokens']}")
+    print(f"Max prompt tokens seen: {max_prompt_tokens} (NVIDIA RPM cap {cfg.NVIDIA_RPM_LIMIT}) | "
+          f"NVIDIA tokens used this run: {row['total_nvidia_tokens']}")
     if condition is None and row["attack_success"] == 1:
         print(f"\n*** NO HEADROOM: this no-adversary baseline already places target {target} in the "
               f"top-{cfg.TOP_K}. Adversary runs will now be refused. Run --calibrate and set TARGET_OVERRIDE / "

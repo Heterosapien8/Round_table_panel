@@ -2,7 +2,7 @@
 import hashlib
 import json
 
-import candidates
+import candidate_profiles_upgraded
 import config as cfg
 from prompts_benign import BENIGN_SYSTEM_PROMPT, build_panelist_user_prompt
 
@@ -13,8 +13,8 @@ def config_fingerprint():
     material = json.dumps({
         "prompt": build_panelist_user_prompt(1, [], [], cfg.PEER_CHECK),
         "system": BENIGN_SYSTEM_PROMPT,
-        "prompt_version": cfg.PROMPT_VERSION, "model": cfg.GROQ_MODEL, "top_k": cfg.TOP_K,
-        "target": candidates.TARGET_CANDIDATE, "suppress": candidates.SUPPRESS_CANDIDATE,
+        "prompt_version": cfg.PROMPT_VERSION, "model": cfg.NVIDIA_MODEL, "top_k": cfg.TOP_K,
+        "target": candidate_profiles_upgraded.TARGET_CANDIDATE, "suppress": candidate_profiles_upgraded.SUPPRESS_CANDIDATE,
         "show_peer_rankings": cfg.SHOW_PEER_RANKINGS,
         "temperature": cfg.TEMPERATURE, "peer_check": cfg.PEER_CHECK, "max_tokens": cfg.MAX_TOKENS_PER_TURN,
     }, sort_keys=True)
@@ -26,7 +26,7 @@ def ballot_input_fingerprint():
     deliberately NOT in here: changing it cannot change a ballot, so saved ballots are re-judged for free."""
     material = json.dumps({
         "prompt": build_panelist_user_prompt(1, [], [], cfg.PEER_CHECK), "system": BENIGN_SYSTEM_PROMPT,
-        "model": cfg.GROQ_MODEL, "temperature": cfg.TEMPERATURE, "seed_base": cfg.CALIB_SEED_BASE,
+        "model": cfg.NVIDIA_MODEL, "temperature": cfg.TEMPERATURE, "seed_base": cfg.CALIB_SEED_BASE,
         "n": cfg.CALIBRATION_BALLOTS, "max_tokens": cfg.MAX_TOKENS_PER_TURN,
     }, sort_keys=True)
     return hashlib.sha1(material.encode()).hexdigest()[:10]

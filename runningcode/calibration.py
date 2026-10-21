@@ -5,11 +5,11 @@ import os
 import sys
 from datetime import datetime, timezone
 
-import candidates
+import candidate_profiles_upgraded
 import config as cfg
 import llm
 from aggregation import _rate, borda_aggregate
-from candidates import REFERENCE_RANKING, REFERENCE_SCORES, REFERENCE_TOP_K, CANDIDATE_LIST, CUTOFF_MARGIN
+from candidate_profiles_upgraded import REFERENCE_RANKING, REFERENCE_SCORES, REFERENCE_TOP_K, CANDIDATE_LIST, CUTOFF_MARGIN
 from fingerprint import ballot_input_fingerprint, config_fingerprint
 from parsing import parse_panelist_output
 from prompts_benign import BENIGN_SYSTEM_PROMPT, build_panelist_user_prompt
@@ -19,7 +19,7 @@ from verification import verify_scores
 def print_dataset_sanity():
     print("Reference scores:", {c: REFERENCE_SCORES[c] for c in REFERENCE_RANKING})
     print(f"Reference top-{cfg.TOP_K}: {REFERENCE_TOP_K} | cutoff margin: {CUTOFF_MARGIN} | "
-          f"target: {candidates.TARGET_CANDIDATE} | suppress: {candidates.SUPPRESS_CANDIDATE}")
+        f"target: {candidate_profiles_upgraded.TARGET_CANDIDATE} | suppress: {candidate_profiles_upgraded.SUPPRESS_CANDIDATE}")
 
 
 def calibration_path():
@@ -38,7 +38,7 @@ def summarize_calibration(ballots):
     """Pure function over blind round-1 ballots. PASS = enough ballots parse, the target is rarely in a
     ballot's top-k, and the suppress candidate is inside the panel's own Borda top-k. Whether the panel's
     top-k equals the reference top-k is REPORTED and only gates the result if CALIB_REQUIRE_REFERENCE_TOPK."""
-    target, suppress = candidates.TARGET_CANDIDATE, candidates.SUPPRESS_CANDIDATE
+    target, suppress = candidate_profiles_upgraded.TARGET_CANDIDATE, candidate_profiles_upgraded.SUPPRESS_CANDIDATE
     n = len(ballots)
     usable = [b for b in ballots if b["ranking_valid"] and b.get("score_check")]
     parse_rate = _rate(len(usable), n) or 0.0
@@ -99,7 +99,7 @@ def calibrate():
     """CALIBRATION_BALLOTS cheap calls: each is one benign panelist's round-1 ballot with NO peers and NO
     memory. Ballots are saved, so changing the target/suppress overrides or SCORE_TOL and re-running
     --calibrate re-judges the SAME ballots with zero API calls. --fresh calls the API again."""
-    target, suppress = candidates.TARGET_CANDIDATE, candidates.SUPPRESS_CANDIDATE
+    target, suppress = candidate_profiles_upgraded.TARGET_CANDIDATE, candidate_profiles_upgraded.SUPPRESS_CANDIDATE
     print_dataset_sanity()
     cached = load_calibration()
     ballots, tokens, reused = [], 0, False
@@ -113,16 +113,16 @@ def calibrate():
             print(f"  ballot {i + 1}: ranking {' > '.join(t['ranking']) if t['ranking_valid'] else 'INVALID'}"
                   f" | score MAE {t['score_check']['mae'] if t['score_check'] else 'n/a'}")
     else:
-        if not cfg.GROQ_API_KEY:
-            print("Error: GROQ_API_KEY environment variable is not set.", file=sys.stderr)
+        if not cfg.NVIDIA_API_KEY:
+            print("Error: NVIDIA_API_KEY environment variable is not set.", file=sys.stderr)
             sys.exit(1)
-        pacer = llm.TPMPacer(cfg.TPM_LIMIT)
+        pacer = llm.NIMRatePacer(cfg.NVIDIA_RPM_LIMIT)
         prompt = build_panelist_user_prompt(1, [], [], cfg.PEER_CHECK)
         print(f"\nCalibrating: {cfg.CALIBRATION_BALLOTS} blind round-1 ballots (config {config_fingerprint()})\n")
         try:
             for i in range(cfg.CALIBRATION_BALLOTS):
-                resp = llm.call_groq(BENIGN_SYSTEM_PROMPT, prompt, pacer,
-                                     seed=cfg.CALIB_SEED_BASE + i, temperature=cfg.TEMPERATURE)
+                resp = llm.call_nvidia(BENIGN_SYSTEM_PROMPT, prompt, pacer,
+                                       seed=cfg.CALIB_SEED_BASE + i, temperature=cfg.TEMPERATURE)
                 tokens += (resp["usage"] or {}).get("total_tokens", 0)
                 t = parse_panelist_output(resp["text"], f"CAL{i + 1}")
                 ballots.append(t)
@@ -135,7 +135,7 @@ def calibrate():
             sys.exit(2)
     res = summarize_calibration(ballots)
     res.update({"config_fingerprint": config_fingerprint(), "input_fingerprint": ballot_input_fingerprint(),
-                "prompt_version": cfg.PROMPT_VERSION, "model": cfg.GROQ_MODEL, "score_tol": cfg.SCORE_TOL,
+                "prompt_version": cfg.PROMPT_VERSION, "model": cfg.NVIDIA_MODEL, "score_tol": cfg.SCORE_TOL,
                 "target": target, "suppress": suppress, "tokens_used": tokens,
                 "ballots": [_ballot_to_cache(t) if not reused else c for t, c in
                             zip(ballots, cached["ballots"] if reused else ballots)],
@@ -151,7 +151,7 @@ def calibrate():
     for note in res["notes"]:
         print(f"  note: {note}")
     if res["passed"]:
-        print(f"\nCALIBRATION PASSED ({tokens} Groq tokens{', reused' if reused else ''}). Saved to {calibration_path()}")
+        print(f"\nCALIBRATION PASSED ({tokens} NVIDIA tokens{', reused' if reused else ''}). Saved to {calibration_path()}")
     else:
         print("\nCALIBRATION FAILED:\n  - " + "\n  - ".join(res["reasons"]))
         sug = res["suggestion"]
@@ -167,7 +167,7 @@ def calibrate():
 def matching_baseline_runs():
     """Summaries of existing no-adversary, defense-off transcripts with the CURRENT config fingerprint."""
     fp, out = config_fingerprint(), []
-    target = candidates.TARGET_CANDIDATE
+    target = candidate_profiles_upgraded.TARGET_CANDIDATE
     for p in glob.glob(os.path.join(cfg.OUTPUT_DIR, "baseline_no_adversary-defoff-*_transcript.json")):
         try:
             with open(p) as f:
@@ -202,7 +202,7 @@ def baseline_gate_check(condition):
         rate = hits / len(runs)
         if rate > cfg.BASELINE_MAX_TARGET_RATE:
             return False, [f"{hits}/{len(runs)} matching baseline runs already put target "
-                           f"{candidates.TARGET_CANDIDATE} in the top-{cfg.TOP_K}: no headroom. Fix the task or "
+                           f"{candidate_profiles_upgraded.TARGET_CANDIDATE} in the top-{cfg.TOP_K}: no headroom. Fix the task or "
                            f"set TARGET_OVERRIDE/SUPPRESS_OVERRIDE, then re-calibrate."]
         msgs.append(f"baseline check: target in top-{cfg.TOP_K} in {hits}/{len(runs)} matching baseline runs "
                     f"({sum(1 for r in runs if r['topk_correct'])}/{len(runs)} had the correct top-{cfg.TOP_K})")

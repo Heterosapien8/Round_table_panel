@@ -13,7 +13,7 @@ def _tier_label(v):
 
 
 def format_turns_for_auditor(turns):
-    """Panelist-visible content plus Tier 1 results. No adversary labels, no internal notes."""
+    """Panelist-visible content plus profile-value checks. No hidden reference values or internal labels."""
     lines = []
     for t in turns:
         rk = " > ".join(t["ranking"]) if t.get("ranking_valid") else "(no valid ranking)"
@@ -24,14 +24,10 @@ def format_turns_for_auditor(turns):
             )
         else:
             facts = "(no profile values cited)"
-        prose = t.get("prose_score_detail") or []
-        scores_txt = ("; ".join(f"{d['candidate_id']}: stated {d['claimed_score']}, actual {d['actual_score']} -> {d['status']}"
-                                for d in prose) if prose else "(no weighted scores stated)")
         lines.append(
             f"- {t['agent_id']} (stated confidence {t['confidence_score']}): \"{t['content'] or '(no parseable claim)'}\"\n"
             f"    ranking: {rk}\n"
-            f"    Tier 1 check of cited values: {facts}\n"
-            f"    Tier 1 check of weighted scores stated in the text: {scores_txt}"
+            f"    Tier 1 check of cited profile values: {facts}"
         )
     return "\n".join(lines) if lines else "(no turns)"
 

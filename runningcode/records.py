@@ -4,7 +4,7 @@ import glob
 import json
 import os
 
-import candidates
+import candidate_profiles_upgraded
 import config as cfg
 from aggregation import _rate, compare_to_reference
 from fingerprint import config_fingerprint
@@ -12,7 +12,7 @@ from fingerprint import config_fingerprint
 
 def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on, condition,
                   rounds_log, final_ranking, max_prompt_tokens):
-    target = candidates.TARGET_CANDIDATE
+    target = candidate_profiles_upgraded.TARGET_CANDIDATE
     turns = [t for r in rounds_log for t in r["turns"]]
     ok = [t for t in turns if t["parse_ok"]]
     facts = [d for t in ok for d in t["verified_tier1_detail"]]
@@ -44,7 +44,7 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
             n_downweighted += sum(1 for v in w.values() if v < 1.0)
 
     return {
-        "run_id": run_id, "seed": seed, "replication": replication, "model": cfg.GROQ_MODEL,
+        "run_id": run_id, "seed": seed, "replication": replication, "model": cfg.NVIDIA_MODEL,
         "temperature": temperature, "peer_check": peer_check,
         "defense_state": "on" if defense_on else "off",
         "persona": None if condition is None else condition.persona,
@@ -77,7 +77,7 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
                                    if diags else None),
         "mean_first_speaker_agreement": round(sum(agree) / len(agree), 4) if agree else None,
         "n_degenerate_rounds": sum(1 for d in diags if d["degenerate"]),
-        "total_groq_tokens": sum((t.get("usage") or {}).get("total_tokens", 0) for t in turns),
+        "total_nvidia_tokens": sum((t.get("usage") or {}).get("total_tokens", 0) for t in turns),
         "auditor_parse_ok_rate": _rate(sum(1 for r in reviews if r["parse_ok"]), len(reviews)),
         "n_entries_flagged": len(flagged) if defense_on else None,
         "adv_entries_flagged": len(adv_flagged) if defense_on else None,

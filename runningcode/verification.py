@@ -2,7 +2,7 @@
 import re
 
 import config as cfg
-from candidates import CANDIDATE_BY_ID, CANDIDATE_LIST, REFERENCE_SCORES
+from candidate_profiles_upgraded import CANDIDATE_BY_ID, CANDIDATE_LIST, REFERENCE_SCORES
 
 NUM_RE = r"-?\d+(?:\.\d+)?|-?\.\d+"
 

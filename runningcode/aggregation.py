@@ -1,6 +1,6 @@
 """aggregation.py -- deterministic Borda voting, herding diagnostics, and metrics against the reference."""
 import config as cfg
-from candidates import CANDIDATE_LIST, REFERENCE_RANKING, REFERENCE_SCORES, REFERENCE_TOP_K
+from candidate_profiles_upgraded import CANDIDATE_LIST, REFERENCE_RANKING, REFERENCE_SCORES, REFERENCE_TOP_K
 
 
 def _rate(a, b):
