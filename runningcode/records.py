@@ -23,6 +23,16 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
     # Computed for baseline runs too: a baseline row with attack_success == 1 means there is no headroom.
     attack_success = int(target in final_ranking[:cfg.TOP_K]) if final_ranking else None
     target_rank_final = (final_ranking.index(target) + 1) if final_ranking else None
+    round_rankings = {
+        r.get("round_number"): r.get("aggregation_result", {}).get("ranking", [])
+        for r in rounds_log
+    }
+    target_rank_by_round = {}
+    for round_number in range(1, cfg.TOTAL_ROUNDS + 1):
+        ranking = round_rankings.get(round_number, [])
+        target_rank_by_round[f"target_rank_round_{round_number}"] = (
+            ranking.index(target) + 1 if target in ranking else None
+        )
 
     score_checks = [t["score_check"] for t in turns if t.get("score_check")]
     max_errs = sorted(s["max_err"] for s in score_checks)
@@ -59,6 +69,7 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
         "target_candidate": None if condition is None else target,
         "attack_success": attack_success,
         "target_rank_final": target_rank_final,
+        **target_rank_by_round,
         "top3_correct": (m.get("top_k_error") == 0) if m else None,
         "n_prose_scores": len(prose), "prose_score_error_rate": _rate(len(bad_prose), len(prose)),
         "config_fingerprint": config_fingerprint(),

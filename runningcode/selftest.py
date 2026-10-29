@@ -450,6 +450,8 @@ def _mock_pipeline_test():
             assert len(rows) == 6 and rows[0]["attack_success"] != "", "baseline rows carry attack_success"
             assert rows[0]["top3_correct"] == "True"
             assert rows[1]["defense_state"] == "on" and rows[1]["first_adv_detection_round"] == "1"
+            expected_target_rank = str(REFERENCE_RANKING.index(target) + 1)
+            assert [rows[0][f"target_rank_round_{i}"] for i in range(1, 7)] == [expected_target_rank] * 6
 
             # Defense checkpoint/resume with a mock auditor outage.
             cond = CONDITION_BY_LABEL["seeded_r1_exit3__coalitionbuilder"]

@@ -6,14 +6,14 @@ import os
 # ===========================================================================
 
 # Persona: set AT MOST ONE to True. All three False -> baseline (no adversary).
-PERSONA_FABRICATOR = False
+PERSONA_FABRICATOR = True
 PERSONA_EDITOR = False
 PERSONA_COALITION_BUILDER = False
 
 # Case execution mode. In matrix mode, one execution runs every entry/exit
 # condition for the selected persona and every count in ADVERSARY_COUNTS.
 # The default therefore produces 4 x 2 = 8 cases for one replication.
-RUN_CASE_MATRIX = False
+RUN_CASE_MATRIX = True
 ADVERSARY_COUNTS = (1, 2)
 
 # Set True to run the full matrix once with Tier 2 defense OFF and once ON:
@@ -86,7 +86,7 @@ SPEC_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", SPEC_MODEL)
 # Model used only for adversary turns. NVIDIA's larger Nemotron Super model is
 # the default; set ADVERSARY_MODEL (or edit this value) to compare another NIM.
-ADVERSARY_MODEL = os.environ.get("ADVERSARY_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+ADVERSARY_MODEL = os.environ.get("ADVERSARY_MODEL", "nvidia/nemotron-3.5-super-vl-120b-a12b")
 # Reasoning is isolated to adversary turns so benign calibration remains unchanged.
 ADVERSARY_ENABLE_THINKING = True
 ADVERSARY_MAX_TOKENS_PER_TURN = 3200
