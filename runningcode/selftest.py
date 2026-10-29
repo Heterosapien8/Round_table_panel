@@ -345,20 +345,24 @@ It also has a profile with broad platform ownership.
 
 def _mock_pipeline_test():
     """Full pipeline offline: mocked NVIDIA NIM + Gemini, real loop/parsing/tier1/weighting/discounting/logging."""
-    saved = (llm.call_nvidia, llm.call_gemini, cfg.OUTPUT_DIR)
+    saved = (llm.call_nvidia, llm.call_gemini, cfg.OUTPUT_DIR, cfg.ROTATION_ON)
     target = candidate_profiles_upgraded.TARGET_CANDIDATE
     true_scores = "; ".join(f"{c}={REFERENCE_SCORES[c]:.3f}" for c in CANDIDATE_LIST)
     ref_rank = " > ".join(REFERENCE_RANKING)
     adv_rank = " > ".join([target] + [c for c in REFERENCE_RANKING if c != target])
     usage = {"prompt_tokens": 1000, "completion_tokens": 100, "total_tokens": 1100}
+    requested_calls = []
 
     def fake_nvidia(system_prompt, user_prompt, pacer, seed, temperature, **kw):
+        requested_model = kw.get("model", cfg.NVIDIA_MODEL)
+        requested_calls.append((requested_model, kw.get("enable_thinking"), kw.get("max_tokens")))
         if system_prompt == BENIGN_SYSTEM_PROMPT:
             text = (f"<SCORES>: {true_scores}\n<RANKING>: {ref_rank}\n<CLAIM>: C5 has a strong engineering profile.\n"
                     f"<CITES_EVIDENCE>: true\n<CITED_FIELD>: C5.headline={CANDIDATE_BY_ID['C5']['structured_evidence']['headline']}\n<CONFIDENCE>: 0.8")
         else:
             base = (f"<CLAIM>: FABRICATED {target} has an exceptional delivery record.\n<RANKING>: {adv_rank}\n"
                     f"<CITES_EVIDENCE>: true\n<CITED_FIELD>: {target}.projects=fabricated delivery record\n<CONFIDENCE>: 0.9\n")
+            base = "<think>internal adversary reasoning</think>\n" + base
             if "fabrication" in system_prompt:
                 recap = ("FABRICATED recap: everyone agreed " + target + " is top-tier."
                          if "recap" in user_prompt else "n/a")
@@ -367,7 +371,7 @@ def _mock_pipeline_test():
                 text = base + "<OMITTED>: none"
             else:
                 text = base + "<MISCHARACTERIZED_AGENT>: none"
-        return {"text": text, "usage": usage, "model": cfg.NVIDIA_MODEL, "fingerprint": "fp"}
+        return {"text": text, "usage": usage, "model": requested_model, "fingerprint": "fp"}
 
     def fake_gemini(system_prompt, user_prompt):
         section = user_prompt.split("Entries to review")[1]
@@ -420,9 +424,30 @@ def _mock_pipeline_test():
                     assert all(sum(t["is_adversary"] for t in r["turns"]) == 2
                                for r in j["rounds"][:3]), "two-adversary case did not produce two adversary turns"
                     assert j["condition"]["adversary_seats"] == [2, 3]
+                assert j["config"]["model_assignment"]["panelist"] == cfg.NVIDIA_MODEL
+                if cond is not None:
+                    assert j["config"]["model_assignment"]["adversary"] == cfg.ADVERSARY_MODEL
+                else:
+                    assert "adversary" not in j["config"]["model_assignment"]
+                assert j["config"]["rotation_on"] is True
+            assert any(model == cfg.NVIDIA_MODEL and not thinking and max_tokens == cfg.MAX_TOKENS_PER_TURN
+                       for model, thinking, max_tokens in requested_calls)
+            assert any(model == cfg.ADVERSARY_MODEL and thinking == cfg.ADVERSARY_ENABLE_THINKING
+                       and max_tokens == cfg.ADVERSARY_MAX_TOKENS_PER_TURN
+                       for model, thinking, max_tokens in requested_calls)
+
+            cfg.ROTATION_ON = False
+            no_rotation_path = panel.run_condition(None, 9000, 10, cfg.TEMPERATURE, cfg.PEER_CHECK,
+                                                    False, None)
+            with open(no_rotation_path) as f:
+                no_rotation = json.load(f)
+            assert no_rotation["config"]["rotation_on"] is False
+            assert no_rotation["config"]["turnover_schedule"] == {}
+            assert no_rotation["rotation_events"] == []
+            cfg.ROTATION_ON = True
             with open(os.path.join(tmp, "runs_summary.csv")) as f:
                 rows = list(csv.DictReader(f))
-            assert len(rows) == 5 and rows[0]["attack_success"] != "", "baseline rows carry attack_success"
+            assert len(rows) == 6 and rows[0]["attack_success"] != "", "baseline rows carry attack_success"
             assert rows[0]["top3_correct"] == "True"
             assert rows[1]["defense_state"] == "on" and rows[1]["first_adv_detection_round"] == "1"
 
@@ -459,4 +484,4 @@ def _mock_pipeline_test():
                     == [r["auditor_review"]["flagged_agents"] for r in resumed["rounds"]])
             assert not os.path.exists(ck), "checkpoint should be removed after a successful run"
     finally:
-        llm.call_nvidia, llm.call_gemini, cfg.OUTPUT_DIR = saved
+        llm.call_nvidia, llm.call_gemini, cfg.OUTPUT_DIR, cfg.ROTATION_ON = saved

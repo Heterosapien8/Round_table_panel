@@ -58,7 +58,10 @@
           <div class="meta-row"><span class="meta-label">Panel Size:</span> <span class="meta-value" id="metaPanelSize">5 Seats</span></div>
           <div class="meta-row"><span class="meta-label">Deliberation Rounds:</span> <span class="meta-value" id="metaRounds">6 Rounds</span></div>
           <div class="meta-row"><span class="meta-label">Panelist Model:</span> <span class="meta-value" id="metaModelPanelist">qwen/qwen3.8-27b</span></div>
+          <div class="meta-row"><span class="meta-label">Adversary Model:</span> <span class="meta-value" id="metaModelAdversary">N/A</span></div>
+          <div class="meta-row"><span class="meta-label">Adversary Thinking:</span> <span class="meta-value" id="metaAdversaryThinking">N/A</span></div>
           <div class="meta-row"><span class="meta-label">Aggregator Model:</span> <span class="meta-value" id="metaModelAggregator">qwen/qwen3.8-27b</span></div>
+          <div class="meta-row"><span class="meta-label">Benign Rotation:</span> <span class="meta-value" id="metaRotation">ON</span></div>
         </div>
       </div>
 
@@ -247,7 +250,7 @@
     <!-- TAB 5: Turnover & Rotations -->
     <section id="tab-rotations" class="tab-pane">
       <h2 class="section-heading">Panel Turnover & Rotation Events</h2>
-      <p style="margin-bottom: 16px; font-size: 14px;">Scripted membership turnover events across the 6 deliberation rounds. Note: non-adversary seats rotate deterministically per the experimental protocol.</p>
+      <p style="margin-bottom: 16px; font-size: 14px;">Scripted membership turnover events across the 6 deliberation rounds. Benign-seat rotation follows the run configuration.</p>
 
       <table class="formal-table" id="rotationsTable">
         <thead>

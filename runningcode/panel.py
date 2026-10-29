@@ -33,6 +33,8 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
     print(f"=== {'Resuming' if resume else 'Starting'} run {run_id} ===")
     print(f"Model: {cfg.NVIDIA_MODEL} | Rounds: {cfg.TOTAL_ROUNDS} | Panel: {cfg.PANEL_SIZE} | "
           f"temp: {temperature} | seed base: {run_seed} | peer_check: {peer_check} | "
+          f"adversary model: {cfg.ADVERSARY_MODEL} | rotation: {'ON' if cfg.ROTATION_ON else 'off'} | "
+          f"adversary thinking: {'ON' if cfg.ADVERSARY_ENABLE_THINKING else 'off'} | "
           f"defense: {'ON (auditor ' + cfg.AUDITOR_MODEL + ')' if defense_on else 'off'}")
     if condition is not None:
         print(f"Condition: {label} | target: {target} | suppress: {suppress}")
@@ -53,6 +55,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
     next_agent_num = cfg.PANEL_SIZE + 1
     call_idx = 0
     models_reported = set()
+    models_reported_by_role = {"panelist": set(), "adversary": set()}
     max_prompt_tokens = 0
 
     start_round = 1
@@ -70,6 +73,12 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         next_agent_num = resume["next_agent_num"]
         call_idx = resume["call_idx"]
         models_reported = set(resume["models_reported"])
+        models_reported_by_role = {
+            role: set(resume.get("models_reported_by_role", {}).get(role, []))
+            for role in ("panelist", "adversary")
+        }
+        if "models_reported_by_role" not in resume:
+            models_reported_by_role["panelist"] = set(models_reported)
         max_prompt_tokens = resume["max_prompt_tokens"]
         start_round = resume["round_number"] if resume["phase"] == "pre_audit" else resume["round_number"] + 1
         print(f"  [resume] from {resume['phase']} checkpoint of round {resume['round_number']}; "
@@ -81,12 +90,18 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         save_checkpoint(ckpt_path, {
             "run_id": run_id, "run_seed": run_seed, "config_fingerprint": config_fingerprint(),
             "auditor_model": cfg.AUDITOR_MODEL, "phase": phase, "round_number": round_number,
+            "panelist_model": cfg.NVIDIA_MODEL, "adversary_model": cfg.ADVERSARY_MODEL,
+            "adversary_enable_thinking": cfg.ADVERSARY_ENABLE_THINKING,
+            "adversary_max_tokens_per_turn": cfg.ADVERSARY_MAX_TOKENS_PER_TURN,
+            "rotation_on": cfg.ROTATION_ON,
             "seats": seats, "adversary_seats": adv_seat_indices,
             "adversary_active_seats": sorted(adversary_active_seats),
             "shared_memory": shared_memory,
             "rotation_events": rotation_events, "rounds_log": rounds_log,
             "next_agent_num": next_agent_num, "call_idx": call_idx,
-            "models_reported": sorted(models_reported), "max_prompt_tokens": max_prompt_tokens,
+            "models_reported": sorted(models_reported),
+            "models_reported_by_role": {role: sorted(models) for role, models in models_reported_by_role.items()},
+            "max_prompt_tokens": max_prompt_tokens,
             "current_round_turns": turns,
         })
 
@@ -148,7 +163,14 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             call_idx += 1
             call_seed = run_seed + call_idx
             print(f"  {agent_id} thinking...", end=" ", flush=True)
-            resp = llm.call_nvidia(system_prompt, user_prompt, pacer, seed=call_seed, temperature=temperature)
+            role = "adversary" if is_adv_turn else "panelist"
+            requested_model = cfg.ADVERSARY_MODEL if is_adv_turn else cfg.NVIDIA_MODEL
+            requested_max_tokens = (cfg.ADVERSARY_MAX_TOKENS_PER_TURN if is_adv_turn
+                                    else cfg.MAX_TOKENS_PER_TURN)
+            resp = llm.call_nvidia(system_prompt, user_prompt, pacer, seed=call_seed,
+                                   temperature=temperature, max_tokens=requested_max_tokens,
+                                   model=requested_model,
+                                   enable_thinking=(cfg.ADVERSARY_ENABLE_THINKING if is_adv_turn else False))
 
             turn = parse_adversary_output(resp["text"], agent_id, persona) if is_adv_turn \
                 else parse_panelist_output(resp["text"], agent_id)
@@ -161,6 +183,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             })
             if resp["model"]:
                 models_reported.add(resp["model"])
+                models_reported_by_role[role].add(resp["model"])
             max_prompt_tokens = max(max_prompt_tokens, resp["usage"].get("prompt_tokens", 0))
             current_round_turns.append(turn)
 
@@ -235,7 +258,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         adversary_exited_this_round = set()
         if condition is not None and adversary_active_seats and exit_round == round_number:
             for adv_seat_idx in sorted(adversary_active_seats):
-                coincident = (round_number in cfg.ROTATION_SCHEDULE
+                coincident = (cfg.ROTATION_ON and round_number in cfg.ROTATION_SCHEDULE
                               and cfg.ROTATION_SCHEDULE[round_number] == adv_seat_idx)
                 old_agent = seats[adv_seat_idx]
                 new_agent = f"A{next_agent_num}"
@@ -251,7 +274,7 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
                       f"{' (coincides with scheduled rotation)' if coincident else ''}")
             adversary_active_seats.clear()
 
-        if round_number in cfg.ROTATION_SCHEDULE:
+        if cfg.ROTATION_ON and round_number in cfg.ROTATION_SCHEDULE:
             seat_idx = cfg.ROTATION_SCHEDULE[round_number]
             if seat_idx in adversary_exited_this_round:
                 pass  # already logged as the single combined event above -- don't double it
@@ -276,10 +299,19 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
         for cid in CANDIDATE_LIST
     ]
 
-    if models_reported - {cfg.NVIDIA_MODEL}:
-        print(f"WARNING: API reported model(s) {sorted(models_reported)} but requested {cfg.NVIDIA_MODEL}")
+    requested_models_by_role = {
+        "panelist": cfg.NVIDIA_MODEL,
+        "adversary": cfg.ADVERSARY_MODEL,
+    }
+    for role, reported in models_reported_by_role.items():
+        unexpected = reported - {requested_models_by_role[role]}
+        if unexpected:
+            print(f"WARNING: API reported {role} model(s) {sorted(unexpected)} but requested "
+                  f"{requested_models_by_role[role]}")
 
     model_assignment = {"panelist": cfg.NVIDIA_MODEL}
+    if condition is not None:
+        model_assignment["adversary"] = cfg.ADVERSARY_MODEL
     if defense_on:
         model_assignment["auditor"] = cfg.AUDITOR_MODEL
 
@@ -304,9 +336,13 @@ def run_condition(condition, run_seed, replication, temperature, peer_check, def
             "panel_size": cfg.PANEL_SIZE,
             "rounds": cfg.TOTAL_ROUNDS,
             "top_k": cfg.TOP_K,
-            "turnover_schedule": cfg.ROTATION_SCHEDULE,
+            "rotation_on": cfg.ROTATION_ON,
+            "turnover_schedule": cfg.ROTATION_SCHEDULE if cfg.ROTATION_ON else {},
             "model_assignment": model_assignment,
+            "adversary_enable_thinking": cfg.ADVERSARY_ENABLE_THINKING,
+            "adversary_max_tokens_per_turn": cfg.ADVERSARY_MAX_TOKENS_PER_TURN,
             "models_reported": sorted(models_reported),
+            "models_reported_by_role": {role: sorted(models) for role, models in models_reported_by_role.items()},
             "temperature": temperature,
             "base_seed": run_seed,
             "peer_check": peer_check,

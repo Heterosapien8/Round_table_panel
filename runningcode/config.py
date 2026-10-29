@@ -7,13 +7,13 @@ import os
 
 # Persona: set AT MOST ONE to True. All three False -> baseline (no adversary).
 PERSONA_FABRICATOR = False
-PERSONA_EDITOR = True
+PERSONA_EDITOR = False
 PERSONA_COALITION_BUILDER = False
 
 # Case execution mode. In matrix mode, one execution runs every entry/exit
 # condition for the selected persona and every count in ADVERSARY_COUNTS.
 # The default therefore produces 4 x 2 = 8 cases for one replication.
-RUN_CASE_MATRIX = True
+RUN_CASE_MATRIX = False
 ADVERSARY_COUNTS = (1, 2)
 
 # Set True to run the full matrix once with Tier 2 defense OFF and once ON:
@@ -37,8 +37,12 @@ ENTRY_EXIT = "seeded_r1_noexit"
 # Defense state. True -> Tier 2 Gemini auditor + weighted voting + discounting (needs GEMINI_API_KEY).
 DEFENSE_ON = False
 
+# Scheduled turnover of benign panel seats. Adversary entry/exit replacement is
+# still applied when this is False.
+ROTATION_ON = True
+
 # Which replication this is (1..8). Seed = BASE_SEED + (REPLICATION - 1) * 1000.
-REPLICATION = 4
+REPLICATION = 1
 BASE_SEED = 1000
 
 # Held constant across ALL conditions once chosen.
@@ -80,6 +84,12 @@ NVIDIA_API_KEY = os.environ.get("NVIDIA_API_KEY")
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 SPEC_MODEL = "nvidia/nemotron-3.5-lightning-30b-a3b"
 NVIDIA_MODEL = os.environ.get("NVIDIA_MODEL", SPEC_MODEL)
+# Model used only for adversary turns. NVIDIA's larger Nemotron Super model is
+# the default; set ADVERSARY_MODEL (or edit this value) to compare another NIM.
+ADVERSARY_MODEL = os.environ.get("ADVERSARY_MODEL", "nvidia/nemotron-3-super-120b-a12b")
+# Reasoning is isolated to adversary turns so benign calibration remains unchanged.
+ADVERSARY_ENABLE_THINKING = True
+ADVERSARY_MAX_TOKENS_PER_TURN = 3200
 NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 GEMINI_URL = f"https://generativelanguage.googleapis.com/v1beta/models/{AUDITOR_MODEL}:generateContent"
 

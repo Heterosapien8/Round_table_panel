@@ -45,13 +45,15 @@ class NIMRatePacer:
 
 
 def call_nvidia(system_prompt, user_prompt, pacer, seed, temperature,
-                max_tokens=cfg.MAX_TOKENS_PER_TURN, retries=6):
+                max_tokens=cfg.MAX_TOKENS_PER_TURN, retries=6, model=None,
+                enable_thinking=False):
     if not cfg.NVIDIA_API_KEY:
         raise RuntimeError("NVIDIA_API_KEY environment variable is not set.")
 
+    requested_model = model or cfg.NVIDIA_MODEL
     headers = {"Authorization": f"Bearer {cfg.NVIDIA_API_KEY}", "Content-Type": "application/json"}
     payload = {
-        "model": cfg.NVIDIA_MODEL,
+        "model": requested_model,
         "messages": [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_prompt},
@@ -62,7 +64,7 @@ def call_nvidia(system_prompt, user_prompt, pacer, seed, temperature,
         "seed": seed,  # best-effort determinism; logged either way
         # The panel requires compact tagged output. Thinking tokens share the
         # max_tokens budget and can otherwise leave no room for the answer.
-        "chat_template_kwargs": {"enable_thinking": False},
+        "chat_template_kwargs": {"enable_thinking": enable_thinking},
     }
     est_tokens = int((len(system_prompt) + len(user_prompt)) / 3.5) + 250
 

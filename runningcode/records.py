@@ -45,6 +45,10 @@ def summarize_run(run_id, seed, replication, temperature, peer_check, defense_on
 
     return {
         "run_id": run_id, "seed": seed, "replication": replication, "model": cfg.NVIDIA_MODEL,
+        "adversary_model": cfg.ADVERSARY_MODEL,
+        "adversary_enable_thinking": cfg.ADVERSARY_ENABLE_THINKING,
+        "adversary_max_tokens_per_turn": cfg.ADVERSARY_MAX_TOKENS_PER_TURN,
+        "rotation_on": cfg.ROTATION_ON,
         "temperature": temperature, "peer_check": peer_check,
         "defense_state": "on" if defense_on else "off",
         "persona": None if condition is None else condition.persona,
@@ -138,7 +142,12 @@ def load_checkpoint(path, run_seed):
     except (OSError, ValueError):
         return None
     if (ck.get("config_fingerprint") != config_fingerprint() or ck.get("run_seed") != run_seed
-            or ck.get("auditor_model") != cfg.AUDITOR_MODEL):
+            or ck.get("auditor_model") != cfg.AUDITOR_MODEL
+            or ck.get("panelist_model") not in (None, cfg.NVIDIA_MODEL)
+            or ck.get("adversary_model") not in (None, cfg.ADVERSARY_MODEL)
+            or ck.get("adversary_enable_thinking") not in (None, cfg.ADVERSARY_ENABLE_THINKING)
+            or ck.get("adversary_max_tokens_per_turn") not in (None, cfg.ADVERSARY_MAX_TOKENS_PER_TURN)
+            or ck.get("rotation_on") not in (None, cfg.ROTATION_ON)):
         raise RuntimeError(f"Checkpoint {path} was made under a different config/seed/auditor model. "
                            "Delete it to start fresh; refusing to resume into a mixed run.")
     return ck

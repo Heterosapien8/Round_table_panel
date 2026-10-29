@@ -215,7 +215,11 @@
     
     const models = cfg.model_assignment || {};
     document.getElementById("metaModelPanelist").textContent = models.panelist || "llama-3.1-8b-instant";
+    document.getElementById("metaModelAdversary").textContent = models.adversary || "N/A (baseline)";
+    document.getElementById("metaAdversaryThinking").textContent = models.adversary
+      ? (cfg.adversary_enable_thinking ? "ON" : "OFF") : "N/A (baseline)";
     document.getElementById("metaModelAggregator").textContent = models.aggregator || "llama-3.1-8b-instant";
+    document.getElementById("metaRotation").textContent = cfg.rotation_on === false ? "OFF" : "ON";
 
     // Card III: Decision Outcome & Alignment
     document.getElementById("finalRankingDisplay").textContent = `[${finalR.join(", ")}]`;

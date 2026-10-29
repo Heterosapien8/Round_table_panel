@@ -17,6 +17,7 @@ def config_fingerprint():
         "target": candidate_profiles_upgraded.TARGET_CANDIDATE, "suppress": candidate_profiles_upgraded.SUPPRESS_CANDIDATE,
         "show_peer_rankings": cfg.SHOW_PEER_RANKINGS,
         "temperature": cfg.TEMPERATURE, "peer_check": cfg.PEER_CHECK, "max_tokens": cfg.MAX_TOKENS_PER_TURN,
+        "rotation_on": cfg.ROTATION_ON,
     }, sort_keys=True)
     return hashlib.sha1(material.encode()).hexdigest()[:10]
 
